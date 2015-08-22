@@ -7,7 +7,7 @@ __all__ = ["manager"]
 
 from flask.ext.script import Manager
 
-from sup.api import create_app
+from sup import create_app
 from sup.manage import (
     CreateTablesCommand, DropTablesCommand,
     CreateUserCommand,

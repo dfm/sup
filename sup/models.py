@@ -124,3 +124,27 @@ class Sup(db.Model):
         self.lat = lat
         self.lng = lng
         self.when = when
+
+    def when_text(self):
+        dt = datetime.utcnow() - self.when
+        if dt.days >= 2:
+            return "{0} days ago".format(dt.days)
+        elif dt.seconds >= 24 * 60 * 60:
+            return "Yesterday"
+        elif dt.seconds >= 2 * 60 * 60:
+            return "{0} hours ago".format(dt.seconds // (60*60))
+        elif dt.seconds >= 60 * 60:
+            return "an hour ago"
+        elif dt.seconds >= 2 * 60:
+            return "{0} minutes ago".format(dt.seconds // 60)
+        elif dt.seconds >= 60:
+            return "a minute ago"
+        elif dt.seconds >= 2:
+            return "{0:.0f} seconds ago".format(dt.seconds)
+        return "Now"
+
+    def to_dict(self):
+        return dict(
+            when=self.when_text(), coords=dict(lat=self.lat, lng=self.lng),
+            from_user=dict(id=self.from_user.id, name=self.from_user.username),
+        )

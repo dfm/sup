@@ -51,6 +51,17 @@ def index():
     return flask.jsonify(message="s'up")
 
 
+@api.route("/sups")
+@login_required
+def list_sups():
+    q = Sup.query.filter((Sup.to_user == current_user) & (Sup.seen == False))
+    q = q.order_by(Sup.when.desc())
+    results = q.all()
+    return flask.jsonify(dict(count=len(results), results=[
+        s.to_dict() for s in results
+    ]))
+
+
 @api.route("/sup/<username>")
 @login_required
 def send_sup(username):

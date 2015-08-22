@@ -29,8 +29,15 @@ function init_map () {
         styles: [{featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }]}]
     };
     var map = new google.maps.Map(document.getElementById("map"), opts);
+
+    var bounds = new google.maps.LatLngBounds();
+    bounds.extend(new google.maps.LatLng(40.645244, -73.9449975));
+    bounds.extend(new google.maps.LatLng(47.614848, -122.3359058));
+
+    map.setCenter(bounds.getCenter()); //or use custom center
+    map.fitBounds(bounds);
 }
 
 </script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?v=3.exp&callback=init_map&signed_in=true"></script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?v=3.exp&callback=init_map"></script>
 {% endblock %}
