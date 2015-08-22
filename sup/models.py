@@ -2,12 +2,14 @@
 
 from __future__ import print_function
 
-__all__ = ["User"]
+__all__ = ["User", "Sup"]
 
 from datetime import datetime
 from werkzeug.security import (
     generate_password_hash, check_password_hash, gen_salt
 )
+
+from flask_login import UserMixin
 
 from .core import db
 from .errors import SupBlockError
@@ -28,7 +30,7 @@ blocks = db.Table(
 )
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -70,6 +72,18 @@ class User(db.Model):
 
     def gen_api_key(self):
         self.api_key = gen_salt(16)
+
+    def is_active(self):
+        return self.active
+
+    def get_id(self):
+        return self.username
+
+    def to_dict(self):
+        return dict(id=self.id, username=self.username,
+                    following=[u.username for u in self.following],
+                    sent=self.sent_sups.count(),
+                    received=self.received_sups.count())
 
 
 class Sup(db.Model):

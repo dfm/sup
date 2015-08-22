@@ -4,26 +4,69 @@ from __future__ import print_function
 
 __all__ = ["api"]
 
-import flask
-# from flask.ext.login import current_user, login_required
+import base64
 
-from . import factory
-# from .models import db
+import flask
+from flask_login import current_user, login_required
+
+from .models import User, Sup
+from .core import db, login_manager
 
 api = flask.Blueprint("api", __name__)
 
 
-def create_app(settings_override=None):
-    app = factory.create_app([api], __name__, settings_override)
+@login_manager.request_loader
+def load_user_from_request(request):
+    api_key = request.args.get("api_key")
+    if api_key:
+        user = User.query.filter_by(api_key=api_key).first()
+        if user:
+            return user
 
-    # # Register custom error handlers
-    # app.errorhandler(OverholtError)(on_overholt_error)
-    # app.errorhandler(OverholtFormError)(on_overholt_form_error)
-    # app.errorhandler(404)(on_404)
+    api_key = request.headers.get("Authorization")
+    if api_key:
+        api_key = api_key.replace("Basic ", "", 1)
+        try:
+            api_key = base64.b64decode(api_key)
+        except TypeError:
+            pass
+        user = User.query.filter_by(api_key=api_key).first()
+        if user:
+            return user
 
-    return app
+    return None
+
+
+@api.errorhandler(404)
+def error_handler(e):
+    resp = flask.jsonify(message="Not Found")
+    resp.status_code = 404
+    return resp
 
 
 @api.route("/")
 def index():
-    return "blah"
+    if current_user.is_authenticated():
+        return flask.jsonify(current_user.to_dict())
+    return flask.jsonify(message="s'up")
+
+
+@api.route("/sup/<username>")
+@login_required
+def send_sup(username):
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        return (flask.jsonify(message="Unknown user '{0}'".format(username)),
+                404)
+
+    try:
+        lat = float(flask.request.args.get("lng", None))
+        lng = float(flask.request.args.get("lng", None))
+    except ValueError:
+        return flask.jsonify(message="Invalid coordinates"), 404
+
+    sup = Sup(current_user, user, lat, lng)
+    db.session.add(sup)
+    db.session.commit()
+
+    return flask.jsonify(current_user.to_dict())

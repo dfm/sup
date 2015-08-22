@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title -%}S'up{%- endblock %}
+
+{% block header %}
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+{% endblock %}
+
+{% block content %}
+
+<div id="map"></div>
+
+<div class="footer">
+    <a href="" alt="Map view"><i class="fa fa-map-marker fa-fw"></i></a>
+    <a href="" alt="List view"><i class="fa fa-list fa-fw"></i></a>
+    <a href="" alt="Send a s'up"><i class="fa fa-location-arrow fa-fw"></i></a>
+    <a href="" alt="Settings"><i class="fa fa-cog fa-fw"></i></a>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+function init_map () {
+    var opts = {
+        center: {lat: 40.645244, lng: -73.9449975}, zoom: 12,
+        disableDefaultUI: true, zoomControl: true,
+        styles: [{featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }]}]
+    };
+    var map = new google.maps.Map(document.getElementById("map"), opts);
+}
+
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?v=3.exp&callback=init_map&signed_in=true"></script>
+{% endblock %}

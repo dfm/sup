@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title -%}S'up &mdash; Log in{%- endblock %}
+
+{% block content %}
+
+<div class="container signup">
+    {% if errors or form.errors %}
+        <span class="form-error"><strong>Errors:</strong></span>
+        {% if errors %}
+            {% for error in errors %}
+                <span class="form-error">{{ error }}</span>
+            {% endfor %}
+        {% endif %}
+        {% for field_name, field_errors in form.errors|dictsort if field_errors %}
+            {% for error in field_errors %}
+                <span class="form-error">{{ error }}</span>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+
+    <form action="{{ request.url }}" method="POST">
+        {{ form.hidden_tag() }}
+        <label>{{ form.username(placeholder="Username") }}</label>
+        <label>{{ form.password(placeholder="Password") }}</label>
+        <label>{{ form.remember() }}Remember this device</label>
+
+        <input type="submit" value="Log in">
+    </form>
+    <p><a href="{{ url_for('.forgot') }}">Forgot your password?</a></p>
+</div>
+
+{% endblock %}

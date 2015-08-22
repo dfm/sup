@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title -%}Sign s'up{%- endblock %}
+
+{% block content %}
+
+<div class="container signup">
+    {% if errors or form.errors %}
+        <span class="form-error"><strong>Errors:</strong></span>
+        {% if errors %}
+            {% for error in errors %}
+                <span class="form-error">{{ error }}</span>
+            {% endfor %}
+        {% endif %}
+        {% for field_name, field_errors in form.errors|dictsort if field_errors %}
+            {% for error in field_errors %}
+                <span class="form-error">{{ error }}</span>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+
+    <form action="{{ url_for('.signup') }}" method="POST">
+        {{ form.hidden_tag() }}
+        <label>{{ form.username(placeholder="Username") }}</label>
+        <label>{{ form.email(placeholder="Email (optional)") }}</label>
+        <label>{{ form.password(placeholder="Password") }}</label>
+
+        <input type="submit" value="Sign up">
+    </form>
+    <p>Already have an account? <a href="{{ url_for('.login') }}">Log in.</a></p>
+</div>
+
+{% endblock %}

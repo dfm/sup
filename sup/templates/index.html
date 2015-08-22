@@ -1,0 +1,74 @@
+{% extends "app.html" %}
+
+{% block title -%}S'up{%- endblock %}
+
+{% block content %}
+
+<div class="container">
+
+<i class="fa fa-map-marker fa-fw"></i>
+<i class="fa fa-list fa-fw"></i>
+<i class="fa fa-location-arrow fa-fw"></i>
+
+    <div id="error" style="display: none">
+        <span class="form-error"><strong>Error:</strong>
+        <span id="error-text"></span></span>
+    </div>
+
+    <ul id="following">
+        {% for user in current_user.following %}
+        <li onclick="javascript:sup('{{ user.username }}')">{{ user.username }}</li>
+        {% endfor %}
+    </ul>
+    <form action="javascript:form_sup()">
+        <label><input type="text" id="username" placeholder="Type a username to s'up"></label>
+    </form>
+
+</div>
+
+<div class="sup-message">
+    <strong>You have new S'ups!</strong>
+</div>
+
+{% raw %}
+<script id="following-template" type="text/html">
+<li onclick="javascript:sup('{{name}}')">{{name}}</li>
+</script>
+{% endraw %}
+
+<script src="{{ url_for('static', filename='jquery-1.11.3.min.js') }}"></script>
+<script src="{{ url_for('static', filename='mustache.min.js') }}"></script>
+<script language="javascript" type="text/javascript">
+
+function fail (msg) {
+    $("#error-text").text(msg)
+    $("#error").show()
+}
+
+function sup (username) {
+    function send_sup (data) {
+        $.ajax({
+            dataType: "json",
+            url: "{{ url_for('api.send_sup', username='') }}"+username,
+            data: {lat: data.coords.latitude, lng: data.coords.longitude},
+            success: function (data) {},
+            error: function (error) {
+                fail(error.responseJSON.message);
+            }
+        })
+    }
+
+    $("#error").hide()
+    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(send_sup);
+    else fail("You need to give your location.")
+}
+
+function form_sup () {
+    var el = $("#username")
+    sup(el.val())
+    el.val(null)
+}
+
+</script>
+
+{% endblock %}
