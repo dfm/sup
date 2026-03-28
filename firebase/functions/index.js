@@ -5,16 +5,25 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 
-const db = getFirestore();
-const messaging = getMessaging();
-
 const COOLDOWN_SECONDS = 60;
+
+// Exported for testability; production code uses the real instances.
+let _db = getFirestore();
+let _messaging = getMessaging();
+
+function getDb() { return _db; }
+function getMsg() { return _messaging; }
+
+// Allow tests to swap in mocks
+exports._setDb = (db) => { _db = db; };
+exports._setMessaging = (msg) => { _messaging = msg; };
+exports.COOLDOWN_SECONDS = COOLDOWN_SECONDS;
 
 /**
  * When a sup document is created or updated, send a push notification
  * to the recipient. Enforces rate limiting server-side.
  */
-exports.onSupWritten = onDocumentWritten("sups/{docId}", async (event) => {
+async function handleSupWritten(event) {
   const after = event.data?.after?.data();
   if (!after) return;
 
@@ -27,13 +36,12 @@ exports.onSupWritten = onDocumentWritten("sups/{docId}", async (event) => {
     const newTime = timestamp.toDate();
     const diff = (newTime - prevTime) / 1000;
     if (diff < COOLDOWN_SECONDS) {
-      // Revert the write
       await event.data.after.ref.set(before);
       return;
     }
   }
 
-  // Look up sender username and recipient device token
+  const db = getDb();
   const [senderDoc, recipientDoc] = await Promise.all([
     db.collection("users").doc(fromUid).get(),
     db.collection("users").doc(toUid).get(),
@@ -44,7 +52,7 @@ exports.onSupWritten = onDocumentWritten("sups/{docId}", async (event) => {
 
   if (!deviceToken) return;
 
-  await messaging.send({
+  await getMsg().send({
     token: deviceToken,
     notification: {
       title: "sup",
@@ -58,13 +66,13 @@ exports.onSupWritten = onDocumentWritten("sups/{docId}", async (event) => {
       },
     },
   });
-});
+}
 
 /**
  * When a friendship is created with status "pending",
  * notify the recipient of the friend request.
  */
-exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", async (event) => {
+async function handleFriendRequestCreated(event) {
   const data = event.data?.data();
   if (!data || data.status !== "pending") return;
 
@@ -72,6 +80,7 @@ exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", async 
   const recipientUid = users.find((uid) => uid !== requestedBy);
   if (!recipientUid) return;
 
+  const db = getDb();
   const [senderDoc, recipientDoc] = await Promise.all([
     db.collection("users").doc(requestedBy).get(),
     db.collection("users").doc(recipientUid).get(),
@@ -82,7 +91,7 @@ exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", async 
 
   if (!deviceToken) return;
 
-  await messaging.send({
+  await getMsg().send({
     token: deviceToken,
     notification: {
       title: "friend request",
@@ -96,4 +105,9 @@ exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", async 
       },
     },
   });
-});
+}
+
+exports.handleSupWritten = handleSupWritten;
+exports.handleFriendRequestCreated = handleFriendRequestCreated;
+exports.onSupWritten = onDocumentWritten("sups/{docId}", handleSupWritten);
+exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", handleFriendRequestCreated);
