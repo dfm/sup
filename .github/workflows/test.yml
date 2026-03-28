@@ -18,7 +18,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: firebase/functions/package-lock.json
-      - run: npm ci
+      - run: npm install
       - run: npm test
