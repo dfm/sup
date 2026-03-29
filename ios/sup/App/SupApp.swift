@@ -1,7 +1,6 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseMessaging
-import GoogleSignIn
 
 @main
 struct SupApp: App {
@@ -55,13 +54,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         Messaging.messaging().apnsToken = deviceToken
+        // Firebase Phone Auth also needs the APNs token for silent push verification
+        Auth.auth().setAPNSToken(deviceToken, type: .unknown)
     }
 
     func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        GIDSignIn.sharedInstance.handle(url)
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        // Forward silent push notifications to Firebase Auth for phone verification
+        if Auth.auth().canHandleNotification(userInfo) {
+            return .noData
+        }
+        return .newData
     }
 }

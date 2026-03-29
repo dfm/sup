@@ -1,8 +1,6 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseCore
-import GoogleSignIn
 
 @Observable
 final class AuthService {
@@ -13,6 +11,9 @@ final class AuthService {
 
     /// Called when auth state changes so other services can react
     var onSignOut: (() -> Void)?
+
+    /// Set after sending verification code; used to complete sign-in
+    var verificationID: String?
 
     private var authListener: AuthStateDidChangeListenerHandle?
     private var userListener: ListenerRegistration?
@@ -38,33 +39,24 @@ final class AuthService {
         userListener?.remove()
     }
 
-    // MARK: - Google Sign-In
+    // MARK: - Phone Auth
 
-    @MainActor
-    func signInWithGoogle() async throws {
-        guard let clientID = FirebaseApp.app()?.options.clientID else {
-            throw AuthError.invalidCredential
+    func sendVerificationCode(to phoneNumber: String) async throws {
+        let id = try await PhoneAuthProvider.provider().verifyPhoneNumber(phoneNumber, uiDelegate: nil)
+        verificationID = id
+    }
+
+    func verifyCode(_ code: String) async throws {
+        guard let verificationID else {
+            throw AuthError.noVerificationID
         }
 
-        let config = GIDConfiguration(clientID: clientID)
-        GIDSignIn.sharedInstance.configuration = config
-
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            throw AuthError.invalidCredential
-        }
-
-        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController)
-
-        guard let idToken = result.user.idToken?.tokenString else {
-            throw AuthError.invalidCredential
-        }
-
-        let credential = GoogleAuthProvider.credential(
-            withIDToken: idToken,
-            accessToken: result.user.accessToken.tokenString
+        let credential = PhoneAuthProvider.provider().credential(
+            withVerificationID: verificationID,
+            verificationCode: code
         )
         try await Auth.auth().signIn(with: credential)
+        self.verificationID = nil
     }
 
     // MARK: - Username Setup
@@ -100,7 +92,6 @@ final class AuthService {
     // MARK: - Sign Out
 
     func signOut() throws {
-        GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
     }
 
@@ -126,12 +117,14 @@ enum AuthError: LocalizedError {
     case invalidCredential
     case notSignedIn
     case usernameTaken
+    case noVerificationID
 
     var errorDescription: String? {
         switch self {
         case .invalidCredential: "Invalid sign-in credential."
         case .notSignedIn: "Not signed in."
         case .usernameTaken: "That username is already taken."
+        case .noVerificationID: "No verification code was sent. Please try again."
         }
     }
 }
