@@ -1,5 +1,7 @@
 # sup
 
+![sup logo](logo.gif)
+
 A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 
 ## Project Structure
