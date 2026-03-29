@@ -27,7 +27,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, Mes
         guard let uid = Auth.auth().currentUser?.uid,
               let token = Messaging.messaging().fcmToken else { return }
 
-        db.collection("users").document(uid).updateData(["deviceToken": token])
+        db.collection("users").document(uid).setData(["deviceToken": token], merge: true)
     }
 
     // MARK: - MessagingDelegate

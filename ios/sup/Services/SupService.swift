@@ -2,6 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 
+@MainActor
 @Observable
 final class SupService {
     /// Most recent sup received from each friend: [fromUid: SupMessage]
@@ -33,13 +34,16 @@ final class SupService {
                         sups[sup.fromUid] = sup
                     }
                 }
-                self.lastSups = sups
+                MainActor.assumeIsolated {
+                    self.lastSups = sups
+                }
             }
     }
 
     func stopListening() {
         listener?.remove()
         lastSups = [:]
+        cooldowns = [:]
     }
 
     func canSup(toUid: String) -> Bool {
@@ -56,10 +60,8 @@ final class SupService {
         let sup = SupMessage(fromUid: uid, toUid: toUid, timestamp: Date())
         let docID = SupMessage.docID(from: uid, to: toUid)
 
-        try db.collection("sups").document(docID).setData(from: sup)
+        try await db.collection("sups").document(docID).setData(from: sup)
 
-        await MainActor.run {
-            self.cooldowns[toUid] = Date().addingTimeInterval(self.cooldownSeconds)
-        }
+        cooldowns[toUid] = Date().addingTimeInterval(cooldownSeconds)
     }
 }

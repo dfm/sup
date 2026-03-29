@@ -15,3 +15,17 @@ struct AppUser: Identifiable, Codable {
         self.createdAt = Date()
     }
 }
+
+/// Public profile visible to other users (no sensitive fields like deviceToken)
+struct Profile: Identifiable, Codable {
+    @DocumentID var id: String?
+    var username: String
+    var usernameLower: String
+    var createdAt: Date
+
+    init(username: String) {
+        self.username = username
+        self.usernameLower = username.lowercased()
+        self.createdAt = Date()
+    }
+}

@@ -5,8 +5,9 @@ struct AddFriendView: View {
     @Environment(FriendService.self) var friendService
 
     @State private var query = ""
-    @State private var results: [AppUser] = []
+    @State private var results: [Profile] = []
     @State private var sentTo: Set<String> = []
+    @State private var failedTo: Set<String> = []
     @State private var isSearching = false
 
     var body: some View {
@@ -21,6 +22,9 @@ struct AddFriendView: View {
                     if sentTo.contains(user.id ?? "") {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
+                    } else if failedTo.contains(user.id ?? "") {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
                     } else {
                         Button("add") {
                             sendRequest(to: user)
@@ -61,11 +65,15 @@ struct AddFriendView: View {
         }
     }
 
-    private func sendRequest(to user: AppUser) {
+    private func sendRequest(to user: Profile) {
         guard let uid = user.id else { return }
         Task {
-            try? await friendService.sendRequest(toUid: uid)
-            sentTo.insert(uid)
+            do {
+                try await friendService.sendRequest(toUid: uid)
+                sentTo.insert(uid)
+            } catch {
+                failedTo.insert(uid)
+            }
         }
     }
 }

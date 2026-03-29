@@ -8,6 +8,7 @@ jest.mock("firebase-functions/v2/firestore", () => ({
   onDocumentCreated: jest.fn((path, handler) => handler),
 }));
 
+process.env.NODE_ENV = "test";
 const functions = require("../index");
 
 describe("onFriendRequestCreated", () => {
@@ -20,8 +21,8 @@ describe("onFriendRequestCreated", () => {
 
   test("sends push notification for pending friend request", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: { deviceToken: "bob-token" },
+      profiles: { alice: { username: "alice" } },
+      users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
 
@@ -54,8 +55,8 @@ describe("onFriendRequestCreated", () => {
 
   test("does not send notification when recipient has no device token", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: {},
+      profiles: { alice: { username: "alice" } },
+      users: { bob: {} },
     });
     functions._setDb(mockDb);
 
@@ -80,8 +81,8 @@ describe("onFriendRequestCreated", () => {
 
   test("uses 'someone' when sender has no username", async () => {
     const mockDb = createMockDb({
-      alice: {},
-      bob: { deviceToken: "bob-token" },
+      profiles: { alice: {} },
+      users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
 
@@ -99,8 +100,8 @@ describe("onFriendRequestCreated", () => {
 
   test("correctly identifies recipient when requestedBy is second in array", async () => {
     const mockDb = createMockDb({
-      bob: { username: "bob" },
-      alice: { deviceToken: "alice-token" },
+      profiles: { bob: { username: "bob" } },
+      users: { alice: { deviceToken: "alice-token" } },
     });
     functions._setDb(mockDb);
 

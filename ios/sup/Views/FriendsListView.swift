@@ -8,6 +8,8 @@ struct FriendsListView: View {
     @State private var showAddFriend = false
     @State private var showRequests = false
     @State private var lastTapped: String?
+    @State private var error: String?
+    @State private var hasStartedListening = false
 
     var body: some View {
         NavigationStack {
@@ -61,32 +63,41 @@ struct FriendsListView: View {
                     }
                 }
             }
+            .alert("error", isPresented: .init(
+                get: { error != nil },
+                set: { if !$0 { error = nil } }
+            )) {
+                Button("ok") { error = nil }
+            } message: {
+                Text(error ?? "")
+            }
             .sheet(isPresented: $showAddFriend) {
                 AddFriendView()
             }
             .sheet(isPresented: $showRequests) {
                 FriendRequestsView()
             }
-            .onAppear {
+            .task {
+                guard !hasStartedListening else { return }
+                hasStartedListening = true
                 friendService.startListening()
                 supService.startListening()
-                Task {
-                    let ns = NotificationService()
-                    _ = await ns.requestPermission()
-                    ns.updateToken()
-                }
             }
         }
     }
 
-    private func sendSup(to friend: AppUser) {
+    private func sendSup(to friend: Profile) {
         guard let uid = friend.id, supService.canSup(toUid: uid) else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         lastTapped = uid
 
         Task {
-            try? await supService.sendSup(toUid: uid)
+            do {
+                try await supService.sendSup(toUid: uid)
+            } catch {
+                self.error = "couldn't send sup"
+            }
             try? await Task.sleep(for: .seconds(1))
             if lastTapped == uid { lastTapped = nil }
         }
@@ -94,7 +105,7 @@ struct FriendsListView: View {
 }
 
 struct FriendRow: View {
-    let friend: AppUser
+    let friend: Profile
     let lastSup: SupMessage?
     let canSup: Bool
     let justSent: Bool

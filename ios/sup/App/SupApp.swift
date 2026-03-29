@@ -16,6 +16,13 @@ struct SupApp: App {
                 .environment(authService)
                 .environment(friendService)
                 .environment(supService)
+                .onAppear {
+                    // Clean up listeners on sign-out
+                    authService.onSignOut = { [friendService, supService] in
+                        friendService.stopListening()
+                        supService.stopListening()
+                    }
+                }
         }
     }
 }
@@ -31,6 +38,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
         UNUserNotificationCenter.current().delegate = notificationService
         Messaging.messaging().delegate = notificationService
+
+        Task {
+            _ = await notificationService.requestPermission()
+            notificationService.updateToken()
+        }
 
         return true
     }

@@ -2,13 +2,14 @@
  * Test helpers for mocking Firestore and Messaging.
  */
 
-function createMockDb(usersData = {}) {
+function createMockDb(collections = {}) {
+  // collections: { "collectionName": { "docId": { ...data } } }
   return {
     collection: (name) => ({
       doc: (id) => ({
         get: async () => ({
-          data: () => usersData[id] || null,
-          exists: !!usersData[id],
+          data: () => (collections[name] && collections[name][id]) || null,
+          exists: !!(collections[name] && collections[name][id]),
         }),
       }),
     }),
@@ -27,13 +28,16 @@ function makeTimestamp(date) {
   return { toDate: () => date };
 }
 
-function makeSupEvent({ beforeData, afterData, refSet }) {
+function makeSupEvent({ beforeData, afterData, refSet, refDelete }) {
   return {
     data: {
       before: beforeData ? { data: () => beforeData } : { data: () => null },
       after: {
         data: () => afterData,
-        ref: { set: refSet || jest.fn() },
+        ref: {
+          set: refSet || jest.fn(),
+          delete: refDelete || jest.fn(),
+        },
       },
     },
   };

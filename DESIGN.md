@@ -27,13 +27,25 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 
 ## Data Model (Firestore)
 
-### `users/{uid}`
+### `users/{uid}` (private — owner-read only)
 | Field | Type | Description |
 |-------|------|-------------|
-| username | string | Unique, lowercase |
+| username | string | Unique |
 | usernameLower | string | For case-insensitive search |
 | deviceToken | string | FCM token for push notifications |
 | createdAt | timestamp | Account creation time |
+
+### `profiles/{uid}` (public — readable by any authenticated user)
+| Field | Type | Description |
+|-------|------|-------------|
+| username | string | Unique |
+| usernameLower | string | For case-insensitive search |
+| createdAt | timestamp | Account creation time |
+
+### `usernames/{usernameLower}` (atomic uniqueness enforcement)
+| Field | Type | Description |
+|-------|------|-------------|
+| uid | string | Owner's uid |
 
 ### `friendships/{uid1}_{uid2}` (uids sorted alphabetically)
 | Field | Type | Description |
@@ -52,7 +64,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 
 ## Cloud Functions
 
-1. **onSupWritten** — when a sup doc is created/updated, send push notification to recipient
+1. **onSupWritten** — verifies friendship, enforces rate limit, sends push notification
 2. **onFriendRequestCreated** — when a friendship doc is created with status "pending", notify the recipient
 
 ## Rate Limiting
@@ -70,8 +82,9 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 
 ## Security Rules
 
-- Users can only read/write their own user doc
-- Friendships readable by either participant
-- Friendship creation requires auth (requestedBy == caller)
-- Sups writable only by the fromUid user, readable by either party
+- `users/{uid}`: owner-only read/write (contains deviceToken)
+- `profiles/{uid}`: readable by any auth user, writable by owner with field validation
+- `usernames/{usernameLower}`: create-only (enforces atomic uniqueness)
+- `friendships`: readable by participants, only non-requester can accept, only status field can change on update, doc ID and users array must be sorted
+- `sups`: doc ID must match `{fromUid}_{toUid}`, server-side friendship verification
 - Rate limiting enforced server-side in Cloud Functions

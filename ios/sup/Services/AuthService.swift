@@ -11,6 +11,9 @@ final class AuthService {
     var isSignedIn = false
     var hasUsername = false
 
+    /// Called when auth state changes so other services can react
+    var onSignOut: (() -> Void)?
+
     private var authListener: AuthStateDidChangeListenerHandle?
     private var userListener: ListenerRegistration?
     private let db = Firestore.firestore()
@@ -20,6 +23,7 @@ final class AuthService {
 
     init() {
         authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            let wasSignedIn = self?.isSignedIn ?? false
             self?.isSignedIn = user != nil
             if let user {
                 self?.listenToUserDoc(uid: user.uid)
@@ -27,6 +31,7 @@ final class AuthService {
                 self?.userListener?.remove()
                 self?.appUser = nil
                 self?.hasUsername = false
+                if wasSignedIn { self?.onSignOut?() }
             }
         }
     }
@@ -66,17 +71,29 @@ final class AuthService {
     func setUsername(_ username: String) async throws {
         guard let uid = currentUser?.uid else { throw AuthError.notSignedIn }
 
-        // Check uniqueness
-        let snapshot = try await db.collection("users")
-            .whereField("usernameLower", isEqualTo: username.lowercased())
-            .getDocuments()
+        let lower = username.lowercased()
 
-        if !snapshot.documents.isEmpty {
+        // Atomically reserve the username via the usernames collection.
+        // If the doc already exists, this will fail with a permission error.
+        let batch = db.batch()
+
+        let usernameRef = db.collection("usernames").document(lower)
+        batch.setData(["uid": uid], forDocument: usernameRef)
+
+        let userRef = db.collection("users").document(uid)
+        let user = AppUser(username: username)
+        try batch.setData(from: user, forDocument: userRef)
+
+        let profileRef = db.collection("profiles").document(uid)
+        let profile = Profile(username: username)
+        try batch.setData(from: profile, forDocument: profileRef)
+
+        do {
+            try await batch.commit()
+        } catch {
+            // If it fails because the username doc already exists, it's taken
             throw AuthError.usernameTaken
         }
-
-        let user = AppUser(username: username)
-        try db.collection("users").document(uid).setData(from: user)
     }
 
     // MARK: - Sign Out
@@ -91,9 +108,10 @@ final class AuthService {
         userListener?.remove()
         userListener = db.collection("users").document(uid)
             .addSnapshotListener { [weak self] snapshot, _ in
-                guard let self, let snapshot, snapshot.exists else {
-                    self?.appUser = nil
-                    self?.hasUsername = false
+                guard let self else { return }
+                guard let snapshot, snapshot.exists else {
+                    self.appUser = nil
+                    self.hasUsername = false
                     return
                 }
                 self.appUser = try? snapshot.data(as: AppUser.self)
@@ -105,7 +123,12 @@ final class AuthService {
         var randomBytes = [UInt8](repeating: 0, count: length)
         _ = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
         let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        return String(randomBytes.map { charset[Int($0) % charset.count] })
+        // Reject-and-resample to avoid modulo bias
+        return String(randomBytes.compactMap { byte in
+            let limit = UInt8(256 / charset.count) * UInt8(charset.count)
+            guard byte < limit else { return nil }
+            return charset[Int(byte) % charset.count]
+        }.prefix(length))
     }
 
     private func sha256(_ input: String) -> String {

@@ -4,8 +4,8 @@ import FirebaseFirestore
 
 @Observable
 final class FriendService {
-    var friends: [AppUser] = []
-    var incomingRequests: [(friendship: Friendship, user: AppUser)] = []
+    var friends: [Profile] = []
+    var incomingRequests: [(friendship: Friendship, user: Profile)] = []
     var requestCount: Int { incomingRequests.count }
 
     private let db = Firestore.firestore()
@@ -35,15 +35,21 @@ final class FriendService {
 
     func sendRequest(toUid: String) async throws {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard uid != toUid else { return }
 
         let docID = Friendship.docID(uid1: uid, uid2: toUid)
+
+        // Don't overwrite an existing friendship
+        let existing = try await db.collection("friendships").document(docID).getDocument()
+        if existing.exists { return }
+
         let friendship = Friendship(
             users: [uid, toUid].sorted(),
             status: .pending,
             requestedBy: uid,
             createdAt: Date()
         )
-        try db.collection("friendships").document(docID).setData(from: friendship)
+        try await db.collection("friendships").document(docID).setData(from: friendship)
     }
 
     func acceptRequest(friendship: Friendship) async throws {
@@ -57,11 +63,11 @@ final class FriendService {
         try await db.collection("friendships").document(id).delete()
     }
 
-    func searchUsers(query: String) async throws -> [AppUser] {
+    func searchUsers(query: String) async throws -> [Profile] {
         guard !query.isEmpty else { return [] }
         let lower = query.lowercased()
 
-        let snapshot = try await db.collection("users")
+        let snapshot = try await db.collection("profiles")
             .whereField("usernameLower", isGreaterThanOrEqualTo: lower)
             .whereField("usernameLower", isLessThanOrEqualTo: lower + "\u{f8ff}")
             .limit(to: 20)
@@ -70,29 +76,38 @@ final class FriendService {
         let currentUid = Auth.auth().currentUser?.uid
         return snapshot.documents.compactMap { doc in
             guard doc.documentID != currentUid else { return nil }
-            return try? doc.data(as: AppUser.self)
+            return try? doc.data(as: Profile.self)
         }
     }
 
     // MARK: - Private
 
     private func processFriendships(_ docs: [QueryDocumentSnapshot], currentUid: String) async {
-        var newFriends: [AppUser] = []
-        var newRequests: [(Friendship, AppUser)] = []
+        var newFriends: [Profile] = []
+        var newRequests: [(Friendship, Profile)] = []
 
-        for doc in docs {
-            guard let friendship = try? doc.data(as: Friendship.self) else { continue }
-            let otherUid = friendship.users.first { $0 != currentUid } ?? ""
+        // Fetch all friend profiles in parallel
+        await withTaskGroup(of: (Friendship, Profile?)?.self) { group in
+            for doc in docs {
+                guard let friendship = try? doc.data(as: Friendship.self) else { continue }
+                let otherUid = friendship.users.first { $0 != currentUid } ?? ""
 
-            guard let userDoc = try? await db.collection("users").document(otherUid).getDocument(),
-                  let user = try? userDoc.data(as: AppUser.self) else { continue }
+                group.addTask { [db] in
+                    guard let userDoc = try? await db.collection("profiles").document(otherUid).getDocument(),
+                          let profile = try? userDoc.data(as: Profile.self) else { return nil }
+                    return (friendship, profile)
+                }
+            }
 
-            switch friendship.status {
-            case .accepted:
-                newFriends.append(user)
-            case .pending:
-                if friendship.requestedBy != currentUid {
-                    newRequests.append((friendship, user))
+            for await result in group {
+                guard let (friendship, profile) = result, let profile else { continue }
+                switch friendship.status {
+                case .accepted:
+                    newFriends.append(profile)
+                case .pending:
+                    if friendship.requestedBy != currentUid {
+                        newRequests.append((friendship, profile))
+                    }
                 }
             }
         }

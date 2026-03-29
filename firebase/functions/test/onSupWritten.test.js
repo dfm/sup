@@ -1,6 +1,5 @@
 const { createMockDb, createMockMessaging, makeTimestamp, makeSupEvent } = require("./helpers");
 
-// Must mock firebase-admin and firebase-functions before requiring index.js
 jest.mock("firebase-admin/app", () => ({ initializeApp: jest.fn() }));
 jest.mock("firebase-admin/firestore", () => ({ getFirestore: jest.fn(() => ({})) }));
 jest.mock("firebase-admin/messaging", () => ({ getMessaging: jest.fn(() => ({})) }));
@@ -9,6 +8,8 @@ jest.mock("firebase-functions/v2/firestore", () => ({
   onDocumentCreated: jest.fn((path, handler) => handler),
 }));
 
+// Enable test exports
+process.env.NODE_ENV = "test";
 const functions = require("../index");
 
 describe("onSupWritten", () => {
@@ -19,10 +20,17 @@ describe("onSupWritten", () => {
     functions._setMessaging(mockMessaging);
   });
 
-  test("sends push notification on new sup", async () => {
+  test("sends push notification on new sup between friends", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: { deviceToken: "bob-token" },
+      friendships: {
+        alice_bob: { status: "accepted" },
+      },
+      profiles: {
+        alice: { username: "alice" },
+      },
+      users: {
+        bob: { deviceToken: "bob-token" },
+      },
     });
     functions._setDb(mockDb);
 
@@ -44,10 +52,63 @@ describe("onSupWritten", () => {
     expect(sent[0].notification.body).toBe("alice says sup");
   });
 
+  test("deletes sup and skips notification when users are not friends", async () => {
+    const mockDb = createMockDb({
+      friendships: {},
+      profiles: { alice: { username: "alice" } },
+      users: { bob: { deviceToken: "bob-token" } },
+    });
+    functions._setDb(mockDb);
+
+    const refDelete = jest.fn();
+    const event = makeSupEvent({
+      beforeData: null,
+      afterData: {
+        fromUid: "alice",
+        toUid: "bob",
+        timestamp: makeTimestamp(new Date()),
+      },
+      refDelete,
+    });
+
+    await functions.handleSupWritten(event);
+
+    expect(refDelete).toHaveBeenCalled();
+    expect(mockMessaging.getSent()).toHaveLength(0);
+  });
+
+  test("deletes sup when friendship is pending (not accepted)", async () => {
+    const mockDb = createMockDb({
+      friendships: {
+        alice_bob: { status: "pending" },
+      },
+      profiles: { alice: { username: "alice" } },
+      users: { bob: { deviceToken: "bob-token" } },
+    });
+    functions._setDb(mockDb);
+
+    const refDelete = jest.fn();
+    const event = makeSupEvent({
+      beforeData: null,
+      afterData: {
+        fromUid: "alice",
+        toUid: "bob",
+        timestamp: makeTimestamp(new Date()),
+      },
+      refDelete,
+    });
+
+    await functions.handleSupWritten(event);
+
+    expect(refDelete).toHaveBeenCalled();
+    expect(mockMessaging.getSent()).toHaveLength(0);
+  });
+
   test("does not send notification when recipient has no device token", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: {},
+      friendships: { alice_bob: { status: "accepted" } },
+      profiles: { alice: { username: "alice" } },
+      users: { bob: {} },
     });
     functions._setDb(mockDb);
 
@@ -67,8 +128,9 @@ describe("onSupWritten", () => {
 
   test("reverts write when within cooldown period", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: { deviceToken: "bob-token" },
+      friendships: { alice_bob: { status: "accepted" } },
+      profiles: { alice: { username: "alice" } },
+      users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
 
@@ -100,8 +162,9 @@ describe("onSupWritten", () => {
 
   test("sends notification when cooldown has elapsed", async () => {
     const mockDb = createMockDb({
-      alice: { username: "alice" },
-      bob: { deviceToken: "bob-token" },
+      friendships: { alice_bob: { status: "accepted" } },
+      profiles: { alice: { username: "alice" } },
+      users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
 
@@ -142,8 +205,9 @@ describe("onSupWritten", () => {
 
   test("uses 'someone' when sender has no username", async () => {
     const mockDb = createMockDb({
-      alice: {},
-      bob: { deviceToken: "bob-token" },
+      friendships: { alice_bob: { status: "accepted" } },
+      profiles: { alice: {} },
+      users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
 

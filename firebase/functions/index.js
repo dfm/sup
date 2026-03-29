@@ -7,27 +7,38 @@ initializeApp();
 
 const COOLDOWN_SECONDS = 60;
 
-// Exported for testability; production code uses the real instances.
 let _db = getFirestore();
 let _messaging = getMessaging();
 
 function getDb() { return _db; }
 function getMsg() { return _messaging; }
 
-// Allow tests to swap in mocks
-exports._setDb = (db) => { _db = db; };
-exports._setMessaging = (msg) => { _messaging = msg; };
+// Test-only hooks
+if (process.env.NODE_ENV === "test") {
+  exports._setDb = (db) => { _db = db; };
+  exports._setMessaging = (msg) => { _messaging = msg; };
+}
 exports.COOLDOWN_SECONDS = COOLDOWN_SECONDS;
 
 /**
- * When a sup document is created or updated, send a push notification
- * to the recipient. Enforces rate limiting server-side.
+ * When a sup document is created or updated, verify friendship,
+ * enforce rate limiting, and send a push notification.
  */
 async function handleSupWritten(event) {
   const after = event.data?.after?.data();
   if (!after) return;
 
   const { fromUid, toUid, timestamp } = after;
+  const db = getDb();
+
+  // Verify friendship exists and is accepted
+  const friendshipId = [fromUid, toUid].sort().join("_");
+  const friendshipDoc = await db.collection("friendships").doc(friendshipId).get();
+  if (!friendshipDoc.exists || friendshipDoc.data()?.status !== "accepted") {
+    // Not friends — delete the sup
+    await event.data.after.ref.delete();
+    return;
+  }
 
   // Rate limit: check if previous sup was too recent
   const before = event.data?.before?.data();
@@ -41,9 +52,9 @@ async function handleSupWritten(event) {
     }
   }
 
-  const db = getDb();
+  // Look up sender username and recipient device token
   const [senderDoc, recipientDoc] = await Promise.all([
-    db.collection("users").doc(fromUid).get(),
+    db.collection("profiles").doc(fromUid).get(),
     db.collection("users").doc(toUid).get(),
   ]);
 
@@ -52,20 +63,24 @@ async function handleSupWritten(event) {
 
   if (!deviceToken) return;
 
-  await getMsg().send({
-    token: deviceToken,
-    notification: {
-      title: "sup",
-      body: `${senderName} says sup`,
-    },
-    apns: {
-      payload: {
-        aps: {
-          sound: "default",
+  try {
+    await getMsg().send({
+      token: deviceToken,
+      notification: {
+        title: "sup",
+        body: `${senderName} says sup`,
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Failed to send sup notification:", err.message);
+  }
 }
 
 /**
@@ -82,7 +97,7 @@ async function handleFriendRequestCreated(event) {
 
   const db = getDb();
   const [senderDoc, recipientDoc] = await Promise.all([
-    db.collection("users").doc(requestedBy).get(),
+    db.collection("profiles").doc(requestedBy).get(),
     db.collection("users").doc(recipientUid).get(),
   ]);
 
@@ -91,20 +106,24 @@ async function handleFriendRequestCreated(event) {
 
   if (!deviceToken) return;
 
-  await getMsg().send({
-    token: deviceToken,
-    notification: {
-      title: "friend request",
-      body: `${senderName} wants to be friends`,
-    },
-    apns: {
-      payload: {
-        aps: {
-          sound: "default",
+  try {
+    await getMsg().send({
+      token: deviceToken,
+      notification: {
+        title: "friend request",
+        body: `${senderName} wants to be friends`,
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Failed to send friend request notification:", err.message);
+  }
 }
 
 exports.handleSupWritten = handleSupWritten;
