@@ -20,7 +20,9 @@ struct SupApp: App {
                     // Clean up listeners on sign-out
                     authService.onSignOut = { [friendService, supService] in
                         friendService.stopListening()
-                        supService.stopListening()
+                        Task { @MainActor in
+                            supService.stopListening()
+                        }
                     }
                 }
         }
