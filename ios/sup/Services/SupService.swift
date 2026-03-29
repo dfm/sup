@@ -34,7 +34,7 @@ final class SupService {
                         sups[sup.fromUid] = sup
                     }
                 }
-                MainActor.assumeIsolated {
+                Task { @MainActor in
                     self.lastSups = sups
                 }
             }
