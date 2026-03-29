@@ -54,18 +54,5 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         Messaging.messaging().apnsToken = deviceToken
-        // Firebase Phone Auth also needs the APNs token for silent push verification
-        Auth.auth().setAPNSToken(deviceToken, type: .unknown)
-    }
-
-    func application(
-        _ application: UIApplication,
-        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
-    ) async -> UIBackgroundFetchResult {
-        // Forward silent push notifications to Firebase Auth for phone verification
-        if Auth.auth().canHandleNotification(userInfo) {
-            return .noData
-        }
-        return .newData
     }
 }

@@ -1,11 +1,10 @@
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
     @Environment(AuthService.self) var auth
+    @Environment(\.colorScheme) var colorScheme
 
-    @State private var phoneNumber = ""
-    @State private var verificationCode = ""
-    @State private var codeSent = false
     @State private var isLoading = false
     @State private var error: String?
 
@@ -22,10 +21,39 @@ struct LoginView: View {
 
             Spacer()
 
-            if !codeSent {
-                phoneNumberStep
-            } else {
-                verificationStep
+            VStack(spacing: 12) {
+                // Apple Sign-In
+                SignInWithAppleButton(.signIn) { request in
+                    let hashedNonce = auth.prepareAppleSignIn()
+                    request.requestedScopes = [.fullName]
+                    request.nonce = hashedNonce
+                } onCompletion: { result in
+                    handleAppleSignIn(result)
+                }
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                .frame(height: 50)
+
+                // Google Sign-In
+                Button {
+                    signInWithGoogle()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "g.circle.fill")
+                        Text("Sign in with Google")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(isLoading)
+            }
+            .padding(.horizontal, 40)
+
+            if isLoading {
+                ProgressView()
             }
 
             if let error {
@@ -40,91 +68,14 @@ struct LoginView: View {
         }
     }
 
-    // MARK: - Step 1: Phone number
-
-    private var phoneNumberStep: some View {
-        VStack(spacing: 16) {
-            TextField("+1 (555) 123-4567", text: $phoneNumber)
-                .textFieldStyle(.roundedBorder)
-                .keyboardType(.phonePad)
-                .textContentType(.telephoneNumber)
-                .padding(.horizontal, 40)
-
-            Button {
-                sendCode()
-            } label: {
-                Group {
-                    if isLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("send code")
-                            .font(.headline)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(.black)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .disabled(phoneNumber.isEmpty || isLoading)
-            .padding(.horizontal, 40)
-        }
-    }
-
-    // MARK: - Step 2: Verification code
-
-    private var verificationStep: some View {
-        VStack(spacing: 16) {
-            Text("enter the code sent to \(phoneNumber)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            TextField("123456", text: $verificationCode)
-                .textFieldStyle(.roundedBorder)
-                .keyboardType(.numberPad)
-                .textContentType(.oneTimeCode)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-
-            Button {
-                verify()
-            } label: {
-                Group {
-                    if isLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("verify")
-                            .font(.headline)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(.black)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .disabled(verificationCode.isEmpty || isLoading)
-            .padding(.horizontal, 40)
-
-            Button("use a different number") {
-                codeSent = false
-                verificationCode = ""
-                error = nil
-            }
-            .font(.caption)
-        }
-    }
-
     // MARK: - Actions
 
-    private func sendCode() {
+    private func signInWithGoogle() {
         isLoading = true
         error = nil
         Task {
             do {
-                try await auth.sendVerificationCode(to: phoneNumber)
-                codeSent = true
+                try await auth.signInWithGoogle()
             } catch {
                 self.error = error.localizedDescription
             }
@@ -132,12 +83,13 @@ struct LoginView: View {
         }
     }
 
-    private func verify() {
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
         isLoading = true
         error = nil
         Task {
             do {
-                try await auth.verifyCode(verificationCode)
+                let authorization = try result.get()
+                try await auth.handleAppleSignIn(authorization)
             } catch {
                 self.error = error.localizedDescription
             }

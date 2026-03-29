@@ -20,7 +20,7 @@ firebase/         # Firebase backend
 ### Firebase
 
 1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable **Authentication** with Phone Number provider
+2. Enable **Authentication** with Google and Apple providers
 3. Enable **Cloud Firestore**
 4. Enable **Cloud Messaging**
 5. Download `GoogleService-Info.plist` and add it to the Xcode project
@@ -38,8 +38,10 @@ firebase/         # Firebase backend
 3. Add Firebase SDK via Swift Package Manager:
    - URL: `https://github.com/firebase/firebase-ios-sdk`
    - Select: `FirebaseAuth`, `FirebaseFirestore`, `FirebaseMessaging`, `FirebaseFunctions`
+   - URL: `https://github.com/google/GoogleSignIn-iOS`
+   - Select: `GoogleSignIn`, `GoogleSignInSwift`
 4. Add `GoogleService-Info.plist` to the project
-5. Enable capabilities: **Push Notifications**, **Background Modes** (Remote notifications)
+5. Enable capabilities: **Push Notifications**, **Background Modes** (Remote notifications), **Sign in with Apple**
 6. Build and run
 
 ## Design

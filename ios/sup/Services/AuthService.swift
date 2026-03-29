@@ -1,6 +1,10 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import AuthenticationServices
+import CryptoKit
+import GoogleSignIn
+import GoogleSignInSwift
 
 @Observable
 final class AuthService {
@@ -12,12 +16,12 @@ final class AuthService {
     /// Called when auth state changes so other services can react
     var onSignOut: (() -> Void)?
 
-    /// Set after sending verification code; used to complete sign-in
-    var verificationID: String?
-
     private var authListener: AuthStateDidChangeListenerHandle?
     private var userListener: ListenerRegistration?
     private let db = Firestore.firestore()
+
+    /// Current nonce used for Apple Sign-In
+    private var currentNonce: String?
 
     init() {
         authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
@@ -39,24 +43,51 @@ final class AuthService {
         userListener?.remove()
     }
 
-    // MARK: - Phone Auth
+    // MARK: - Google Sign-In
 
-    func sendVerificationCode(to phoneNumber: String) async throws {
-        let id = try await PhoneAuthProvider.provider().verifyPhoneNumber(phoneNumber, uiDelegate: nil)
-        verificationID = id
-    }
-
-    func verifyCode(_ code: String) async throws {
-        guard let verificationID else {
-            throw AuthError.noVerificationID
+    func signInWithGoogle() async throws {
+        guard let windowScene = await UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = await windowScene.windows.first?.rootViewController else {
+            throw AuthError.noRootViewController
         }
 
-        let credential = PhoneAuthProvider.provider().credential(
-            withVerificationID: verificationID,
-            verificationCode: code
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw AuthError.invalidCredential
+        }
+
+        let credential = GoogleAuthProvider.credential(
+            withIDToken: idToken,
+            accessToken: result.user.accessToken.tokenString
         )
         try await Auth.auth().signIn(with: credential)
-        self.verificationID = nil
+    }
+
+    // MARK: - Apple Sign-In
+
+    /// Prepares and returns a nonce for Apple Sign-In.
+    func prepareAppleSignIn() -> String {
+        let nonce = randomNonceString()
+        currentNonce = nonce
+        return sha256(nonce)
+    }
+
+    /// Completes Apple Sign-In with the authorization result.
+    func handleAppleSignIn(_ authorization: ASAuthorization) async throws {
+        guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let appleIDToken = appleIDCredential.identityToken,
+              let idTokenString = String(data: appleIDToken, encoding: .utf8),
+              let nonce = currentNonce else {
+            throw AuthError.invalidCredential
+        }
+
+        let credential = OAuthProvider.appleCredential(
+            withIDToken: idTokenString,
+            rawNonce: nonce,
+            fullName: appleIDCredential.fullName
+        )
+        try await Auth.auth().signIn(with: credential)
+        currentNonce = nil
     }
 
     // MARK: - Username Setup
@@ -92,6 +123,7 @@ final class AuthService {
     // MARK: - Sign Out
 
     func signOut() throws {
+        GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
     }
 
@@ -111,20 +143,48 @@ final class AuthService {
                 self.hasUsername = self.appUser != nil
             }
     }
+
+    private func randomNonceString(length: Int = 32) -> String {
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+        while remainingLength > 0 {
+            let randoms: [UInt8] = (0 ..< 16).map { _ in
+                var random: UInt8 = 0
+                let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+                if errorCode != errSecSuccess { fatalError("Unable to generate nonce.") }
+                return random
+            }
+            for random in randoms {
+                if remainingLength == 0 { break }
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        return result
+    }
+
+    private func sha256(_ input: String) -> String {
+        let data = Data(input.utf8)
+        let hash = SHA256.hash(data: data)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
 }
 
 enum AuthError: LocalizedError {
     case invalidCredential
     case notSignedIn
     case usernameTaken
-    case noVerificationID
+    case noRootViewController
 
     var errorDescription: String? {
         switch self {
         case .invalidCredential: "Invalid sign-in credential."
         case .notSignedIn: "Not signed in."
         case .usernameTaken: "That username is already taken."
-        case .noVerificationID: "No verification code was sent. Please try again."
+        case .noRootViewController: "Unable to present sign-in."
         }
     }
 }
