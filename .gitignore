@@ -1,0 +1,15 @@
+node_modules/
+package-lock.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+GoogleService-Info.plist
+
+# Xcode
+*.xcuserdata
+DerivedData/
+
+# Environment
+.env
+.env.*

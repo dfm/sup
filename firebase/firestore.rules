@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Private user data (deviceToken, etc.) — owner only
+    match /users/{uid} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid;
+    }
+
+    // Profiles — owner only (search is done server-side via Cloud Function)
+    match /profiles/{uid} {
+      allow read: if request.auth != null
+        && request.auth.uid == uid;
+
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['username', 'usernameLower', 'createdAt'])
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 20
+        && request.resource.data.usernameLower == request.resource.data.username.lower();
+
+      // Username is immutable; only non-username fields can be updated
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.usernameLower == resource.data.usernameLower
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // Username reservation — enforces uniqueness atomically
+    match /usernames/{usernameLower} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+      // No update or delete — usernames are permanent
+    }
+
+    // Friendships — participants only, with strict validation
+    match /friendships/{docId} {
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.users;
+
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.requestedBy
+        && request.auth.uid in request.resource.data.users
+        && request.resource.data.users.size() == 2
+        && request.resource.data.users[0] != request.resource.data.users[1]
+        && request.resource.data.users[0] < request.resource.data.users[1]
+        && docId == (request.resource.data.users[0] + '_' + request.resource.data.users[1])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.usernames is map
+        && request.resource.data.usernames.size() == 2;
+
+      // Only the non-requester can accept; only status can change
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.users
+        && request.auth.uid != resource.data.requestedBy
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      allow delete: if request.auth != null
+        && request.auth.uid in resource.data.users;
+    }
+
+    // Sups — sender must be authenticated, doc ID must match format
+    match /sups/{docId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.fromUid
+            || request.auth.uid == resource.data.toUid);
+
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.fromUid
+        && request.resource.data.fromUid is string
+        && request.resource.data.toUid is string
+        && request.resource.data.timestamp is timestamp
+        && docId == (request.resource.data.fromUid + '_' + request.resource.data.toUid);
+
+      // Updates can only change timestamp (for subsequent sups)
+      allow update: if request.auth != null
+        && request.auth.uid == request.resource.data.fromUid
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['timestamp']);
+    }
+  }
+}
