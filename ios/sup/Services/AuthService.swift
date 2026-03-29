@@ -121,15 +121,17 @@ final class AuthService {
     }
 
     private func randomNonceString(length: Int = 32) -> String {
-        var randomBytes = [UInt8](repeating: 0, count: length)
-        _ = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
         let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        // Reject-and-resample to avoid modulo bias
-        return String(randomBytes.compactMap { byte in
-            let limit = UInt8(256 / charset.count) * UInt8(charset.count)
-            guard byte < limit else { return nil }
-            return charset[Int(byte) % charset.count]
-        }.prefix(length))
+        let limit = UInt8(256 / charset.count) * UInt8(charset.count)
+        var result: [Character] = []
+        result.reserveCapacity(length)
+        while result.count < length {
+            var byte: UInt8 = 0
+            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &byte)
+            guard byte < limit else { continue }
+            result.append(charset[Int(byte) % charset.count])
+        }
+        return String(result)
     }
 
     private func sha256(_ input: String) -> String {
