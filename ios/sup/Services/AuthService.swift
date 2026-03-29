@@ -63,6 +63,7 @@ final class AuthService {
             rawNonce: nonce,
             fullName: credential.fullName
         )
+        currentNonce = nil
         try await Auth.auth().signIn(with: oauthCredential)
     }
 
@@ -90,8 +91,8 @@ final class AuthService {
 
         do {
             try await batch.commit()
-        } catch {
-            // If it fails because the username doc already exists, it's taken
+        } catch let error as NSError where error.domain == "FIRFirestoreErrorDomain"
+            && error.code == 7 /* PERMISSION_DENIED */ {
             throw AuthError.usernameTaken
         }
     }

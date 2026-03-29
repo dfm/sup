@@ -46,6 +46,7 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.requestedBy
         && request.auth.uid in request.resource.data.users
         && request.resource.data.users.size() == 2
+        && request.resource.data.users[0] != request.resource.data.users[1]
         && request.resource.data.users[0] < request.resource.data.users[1]
         && docId == (request.resource.data.users[0] + '_' + request.resource.data.users[1])
         && request.resource.data.status == 'pending';
