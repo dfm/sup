@@ -5,7 +5,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 ## App Flow
 
 1. **Launch** → check Firebase Auth state
-2. **Not signed in** → Apple Sign-In screen
+2. **Not signed in** → Google Sign-In screen
 3. **Signed in, no username** → pick a unique username
 4. **Signed in with username** → friends list (main screen)
 
@@ -75,7 +75,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 ## Tech Stack
 
 - **iOS**: SwiftUI, iOS 17+, Swift 5.9+
-- **Auth**: Firebase Auth with Apple Sign-In
+- **Auth**: Firebase Auth with Google Sign-In
 - **Database**: Cloud Firestore
 - **Push**: Firebase Cloud Messaging (FCM) → APNs
 - **Backend**: Firebase Cloud Functions (Node.js)

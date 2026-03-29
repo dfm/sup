@@ -1,9 +1,10 @@
 import SwiftUI
-import AuthenticationServices
+import GoogleSignIn
 
 struct LoginView: View {
     @Environment(AuthService.self) var auth
     @State private var error: String?
+    @State private var isLoading = false
 
     var body: some View {
         VStack(spacing: 32) {
@@ -18,21 +19,26 @@ struct LoginView: View {
 
             Spacer()
 
-            SignInWithAppleButton(.signIn) { request in
-                let hashedNonce = auth.prepareAppleSignIn()
-                request.requestedScopes = [.email]
-                request.nonce = hashedNonce
-            } onCompletion: { result in
-                Task {
-                    do {
-                        try await auth.handleAppleSignIn(result)
-                    } catch {
-                        self.error = error.localizedDescription
+            Button {
+                signIn()
+            } label: {
+                HStack(spacing: 12) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                        Text("Sign in with Google")
+                            .font(.headline)
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(.black)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .signInWithAppleButtonStyle(.black)
-            .frame(height: 50)
+            .disabled(isLoading)
             .padding(.horizontal, 40)
 
             if let error {
@@ -43,6 +49,19 @@ struct LoginView: View {
 
             Spacer()
                 .frame(height: 40)
+        }
+    }
+
+    private func signIn() {
+        isLoading = true
+        error = nil
+        Task {
+            do {
+                try await auth.signInWithGoogle()
+            } catch {
+                self.error = error.localizedDescription
+            }
+            isLoading = false
         }
     }
 }

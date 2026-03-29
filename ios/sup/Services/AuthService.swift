@@ -1,8 +1,8 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
-import AuthenticationServices
-import CryptoKit
+import FirebaseCore
+import GoogleSignIn
 
 @Observable
 final class AuthService {
@@ -17,9 +17,6 @@ final class AuthService {
     private var authListener: AuthStateDidChangeListenerHandle?
     private var userListener: ListenerRegistration?
     private let db = Firestore.firestore()
-
-    // For Apple Sign-In flow
-    private var currentNonce: String?
 
     init() {
         authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
@@ -41,30 +38,33 @@ final class AuthService {
         userListener?.remove()
     }
 
-    // MARK: - Apple Sign-In
+    // MARK: - Google Sign-In
 
-    func prepareAppleSignIn() -> String {
-        let nonce = randomNonceString()
-        currentNonce = nonce
-        return sha256(nonce)
-    }
-
-    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async throws {
-        let authorization = try result.get()
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-              let tokenData = credential.identityToken,
-              let idToken = String(data: tokenData, encoding: .utf8),
-              let nonce = currentNonce else {
+    @MainActor
+    func signInWithGoogle() async throws {
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
             throw AuthError.invalidCredential
         }
 
-        let oauthCredential = OAuthProvider.appleCredential(
+        let config = GIDConfiguration(clientID: clientID)
+        GIDSignIn.sharedInstance.configuration = config
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            throw AuthError.invalidCredential
+        }
+
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController)
+
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw AuthError.invalidCredential
+        }
+
+        let credential = GoogleAuthProvider.credential(
             withIDToken: idToken,
-            rawNonce: nonce,
-            fullName: credential.fullName
+            accessToken: result.user.accessToken.tokenString
         )
-        currentNonce = nil
-        try await Auth.auth().signIn(with: oauthCredential)
+        try await Auth.auth().signIn(with: credential)
     }
 
     // MARK: - Username Setup
@@ -100,6 +100,7 @@ final class AuthService {
     // MARK: - Sign Out
 
     func signOut() throws {
+        GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
     }
 
@@ -118,26 +119,6 @@ final class AuthService {
                 self.appUser = try? snapshot.data(as: AppUser.self)
                 self.hasUsername = self.appUser != nil
             }
-    }
-
-    private func randomNonceString(length: Int = 32) -> String {
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        let limit = UInt8(256 / charset.count) * UInt8(charset.count)
-        var result: [Character] = []
-        result.reserveCapacity(length)
-        while result.count < length {
-            var byte: UInt8 = 0
-            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &byte)
-            guard byte < limit else { continue }
-            result.append(charset[Int(byte) % charset.count])
-        }
-        return String(result)
-    }
-
-    private func sha256(_ input: String) -> String {
-        let data = Data(input.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
 
