@@ -7,6 +7,12 @@ jest.mock("firebase-functions/v2/firestore", () => ({
   onDocumentWritten: jest.fn((path, handler) => handler),
   onDocumentCreated: jest.fn((path, handler) => handler),
 }));
+jest.mock("firebase-functions/v2/https", () => ({
+  onCall: jest.fn((handler) => handler),
+  HttpsError: class HttpsError extends Error {
+    constructor(code, message) { super(message); this.code = code; }
+  },
+}));
 
 // Enable test exports
 process.env.NODE_ENV = "test";
@@ -23,10 +29,7 @@ describe("onSupWritten", () => {
   test("sends push notification on new sup between friends", async () => {
     const mockDb = createMockDb({
       friendships: {
-        alice_bob: { status: "accepted" },
-      },
-      profiles: {
-        alice: { username: "alice" },
+        alice_bob: { status: "accepted", usernames: { alice: "alice", bob: "bob" } },
       },
       users: {
         bob: { deviceToken: "bob-token" },
@@ -55,7 +58,6 @@ describe("onSupWritten", () => {
   test("deletes sup and skips notification when users are not friends", async () => {
     const mockDb = createMockDb({
       friendships: {},
-      profiles: { alice: { username: "alice" } },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -80,9 +82,8 @@ describe("onSupWritten", () => {
   test("deletes sup when friendship is pending (not accepted)", async () => {
     const mockDb = createMockDb({
       friendships: {
-        alice_bob: { status: "pending" },
+        alice_bob: { status: "pending", usernames: { alice: "alice", bob: "bob" } },
       },
-      profiles: { alice: { username: "alice" } },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -106,8 +107,7 @@ describe("onSupWritten", () => {
 
   test("does not send notification when recipient has no device token", async () => {
     const mockDb = createMockDb({
-      friendships: { alice_bob: { status: "accepted" } },
-      profiles: { alice: { username: "alice" } },
+      friendships: { alice_bob: { status: "accepted", usernames: { alice: "alice", bob: "bob" } } },
       users: { bob: {} },
     });
     functions._setDb(mockDb);
@@ -128,8 +128,7 @@ describe("onSupWritten", () => {
 
   test("reverts write when within cooldown period", async () => {
     const mockDb = createMockDb({
-      friendships: { alice_bob: { status: "accepted" } },
-      profiles: { alice: { username: "alice" } },
+      friendships: { alice_bob: { status: "accepted", usernames: { alice: "alice", bob: "bob" } } },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -162,8 +161,7 @@ describe("onSupWritten", () => {
 
   test("sends notification when cooldown has elapsed", async () => {
     const mockDb = createMockDb({
-      friendships: { alice_bob: { status: "accepted" } },
-      profiles: { alice: { username: "alice" } },
+      friendships: { alice_bob: { status: "accepted", usernames: { alice: "alice", bob: "bob" } } },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -203,10 +201,9 @@ describe("onSupWritten", () => {
     expect(mockMessaging.getSent()).toHaveLength(0);
   });
 
-  test("uses 'someone' when sender has no username", async () => {
+  test("uses 'someone' when friendship doc has no usernames", async () => {
     const mockDb = createMockDb({
       friendships: { alice_bob: { status: "accepted" } },
-      profiles: { alice: {} },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);

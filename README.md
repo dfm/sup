@@ -37,7 +37,7 @@ firebase/         # Firebase backend
 2. Copy the files from `ios/sup/` into your project
 3. Add Firebase SDK via Swift Package Manager:
    - URL: `https://github.com/firebase/firebase-ios-sdk`
-   - Select: `FirebaseAuth`, `FirebaseFirestore`, `FirebaseMessaging`
+   - Select: `FirebaseAuth`, `FirebaseFirestore`, `FirebaseMessaging`, `FirebaseFunctions`
 4. Add `GoogleService-Info.plist` to the project
 5. Enable capabilities: **Push Notifications**, **Background Modes** (Remote notifications)
 6. Build and run

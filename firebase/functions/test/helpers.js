@@ -12,6 +12,29 @@ function createMockDb(collections = {}) {
           exists: !!(collections[name] && collections[name][id]),
         }),
       }),
+      where: (field, op, value) => ({
+        where: (field2, op2, value2) => ({
+          limit: (n) => ({
+            get: async () => {
+              const col = collections[name] || {};
+              const docs = Object.entries(col)
+                .filter(([, data]) => {
+                  const v = data[field];
+                  if (op === ">=" && op2 === "<=") {
+                    return v >= value && v <= value2;
+                  }
+                  return true;
+                })
+                .slice(0, n)
+                .map(([id, data]) => ({
+                  id,
+                  data: () => data,
+                }));
+              return { docs };
+            },
+          }),
+        }),
+      }),
     }),
   };
 }

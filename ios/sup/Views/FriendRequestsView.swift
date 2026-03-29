@@ -16,9 +16,9 @@ struct FriendRequestsView: View {
                         description: Text("friend requests will show up here")
                     )
                 } else {
-                    List(friendService.incomingRequests, id: \.user.id) { item in
+                    List(friendService.incomingRequests, id: \.friendship.id) { item in
                         HStack {
-                            Text(item.user.username)
+                            Text(item.username)
                                 .font(.body)
 
                             Spacer()

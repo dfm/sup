@@ -53,6 +53,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 | users | array[string] | [uid1, uid2] sorted |
 | status | string | "pending" or "accepted" |
 | requestedBy | string | uid of requester |
+| usernames | map | {uid: username} for both users |
 | createdAt | timestamp | Request time |
 
 ### `sups/{fromUid}_{toUid}` (overwritten each time)
@@ -66,6 +67,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 
 1. **onSupWritten** — verifies friendship, enforces rate limit, sends push notification
 2. **onFriendRequestCreated** — when a friendship doc is created with status "pending", notify the recipient
+3. **searchUsers** (callable) — searches profiles by username prefix, returns uid + username (keeps profiles private)
 
 ## Rate Limiting
 
@@ -83,7 +85,7 @@ A dead-simple iOS app. Tap a friend, send them a "sup" push notification.
 ## Security Rules
 
 - `users/{uid}`: owner-only read/write (contains deviceToken)
-- `profiles/{uid}`: readable by any auth user, writable by owner with field validation
+- `profiles/{uid}`: owner-only read/write (search is done server-side via callable Cloud Function)
 - `usernames/{usernameLower}`: create-only (enforces atomic uniqueness)
 - `friendships`: readable by participants, only non-requester can accept, only status field can change on update, doc ID and users array must be sorted
 - `sups`: doc ID must match `{fromUid}_{toUid}`, server-side friendship verification

@@ -1,14 +1,16 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseFunctions
 
 @Observable
 final class FriendService {
-    var friends: [Profile] = []
-    var incomingRequests: [(friendship: Friendship, user: Profile)] = []
+    var friends: [Friend] = []
+    var incomingRequests: [(friendship: Friendship, username: String)] = []
     var requestCount: Int { incomingRequests.count }
 
     private let db = Firestore.firestore()
+    private let functions = Functions.functions()
     private var friendshipListener: ListenerRegistration?
 
     deinit {
@@ -23,7 +25,7 @@ final class FriendService {
             .whereField("users", arrayContains: uid)
             .addSnapshotListener { [weak self] snapshot, _ in
                 guard let self, let docs = snapshot?.documents else { return }
-                Task { await self.processFriendships(docs, currentUid: uid) }
+                self.processFriendships(docs, currentUid: uid)
             }
     }
 
@@ -33,7 +35,7 @@ final class FriendService {
         incomingRequests = []
     }
 
-    func sendRequest(toUid: String) async throws {
+    func sendRequest(toUid: String, toUsername: String) async throws {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         guard uid != toUid else { return }
 
@@ -43,10 +45,15 @@ final class FriendService {
         let existing = try await db.collection("friendships").document(docID).getDocument()
         if existing.exists { return }
 
+        // Get current user's username
+        let userDoc = try await db.collection("users").document(uid).getDocument()
+        let currentUsername = try userDoc.data(as: AppUser.self).username
+
         let friendship = Friendship(
             users: [uid, toUid].sorted(),
             status: .pending,
             requestedBy: uid,
+            usernames: [uid: currentUsername, toUid: toUsername],
             createdAt: Date()
         )
         try await db.collection("friendships").document(docID).setData(from: friendship)
@@ -63,58 +70,42 @@ final class FriendService {
         try await db.collection("friendships").document(id).delete()
     }
 
-    func searchUsers(query: String) async throws -> [Profile] {
+    func searchUsers(query: String) async throws -> [UserSearchResult] {
         guard !query.isEmpty else { return [] }
-        let lower = query.lowercased()
 
-        let snapshot = try await db.collection("profiles")
-            .whereField("usernameLower", isGreaterThanOrEqualTo: lower)
-            .whereField("usernameLower", isLessThanOrEqualTo: lower + "\u{f8ff}")
-            .limit(to: 20)
-            .getDocuments()
+        let result = try await functions.httpsCallable("searchUsers").call(["query": query])
 
-        let currentUid = Auth.auth().currentUser?.uid
-        return snapshot.documents.compactMap { doc in
-            guard doc.documentID != currentUid else { return nil }
-            return try? doc.data(as: Profile.self)
+        guard let data = result.data as? [[String: Any]] else { return [] }
+
+        return data.compactMap { item in
+            guard let uid = item["uid"] as? String,
+                  let username = item["username"] as? String else { return nil }
+            return UserSearchResult(id: uid, username: username)
         }
     }
 
     // MARK: - Private
 
-    private func processFriendships(_ docs: [QueryDocumentSnapshot], currentUid: String) async {
-        var newFriends: [Profile] = []
-        var newRequests: [(Friendship, Profile)] = []
+    private func processFriendships(_ docs: [QueryDocumentSnapshot], currentUid: String) {
+        var newFriends: [Friend] = []
+        var newRequests: [(Friendship, String)] = []
 
-        // Fetch all friend profiles in parallel
-        await withTaskGroup(of: (Friendship, Profile?)?.self) { group in
-            for doc in docs {
-                guard let friendship = try? doc.data(as: Friendship.self) else { continue }
-                let otherUid = friendship.users.first { $0 != currentUid } ?? ""
+        for doc in docs {
+            guard let friendship = try? doc.data(as: Friendship.self) else { continue }
+            let otherUid = friendship.users.first { $0 != currentUid } ?? ""
+            let otherUsername = friendship.usernames[otherUid] ?? "unknown"
 
-                group.addTask { [db] in
-                    guard let userDoc = try? await db.collection("profiles").document(otherUid).getDocument(),
-                          let profile = try? userDoc.data(as: Profile.self) else { return nil }
-                    return (friendship, profile)
-                }
-            }
-
-            for await result in group {
-                guard let (friendship, profile) = result, let profile else { continue }
-                switch friendship.status {
-                case .accepted:
-                    newFriends.append(profile)
-                case .pending:
-                    if friendship.requestedBy != currentUid {
-                        newRequests.append((friendship, profile))
-                    }
+            switch friendship.status {
+            case .accepted:
+                newFriends.append(Friend(id: otherUid, username: otherUsername))
+            case .pending:
+                if friendship.requestedBy != currentUid {
+                    newRequests.append((friendship, otherUsername))
                 }
             }
         }
 
-        await MainActor.run {
-            self.friends = newFriends.sorted { $0.username < $1.username }
-            self.incomingRequests = newRequests
-        }
+        friends = newFriends.sorted { $0.username < $1.username }
+        incomingRequests = newRequests
     }
 }

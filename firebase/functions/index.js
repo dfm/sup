@@ -1,4 +1,5 @@
 const { onDocumentWritten, onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -19,6 +20,37 @@ if (process.env.NODE_ENV === "test") {
   exports._setMessaging = (msg) => { _messaging = msg; };
 }
 exports.COOLDOWN_SECONDS = COOLDOWN_SECONDS;
+
+/**
+ * Callable function: search users by username prefix.
+ * Queries the profiles collection server-side (admin SDK bypasses rules).
+ */
+async function handleSearchUsers(request) {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Must be signed in");
+  }
+
+  const query = request.data?.query;
+  if (!query || typeof query !== "string") {
+    return [];
+  }
+
+  const lower = query.toLowerCase();
+  const db = getDb();
+
+  const snapshot = await db.collection("profiles")
+    .where("usernameLower", ">=", lower)
+    .where("usernameLower", "<=", lower + "\uf8ff")
+    .limit(20)
+    .get();
+
+  return snapshot.docs
+    .filter((doc) => doc.id !== request.auth.uid)
+    .map((doc) => ({
+      uid: doc.id,
+      username: doc.data().username,
+    }));
+}
 
 /**
  * When a sup document is created or updated, verify friendship,
@@ -52,13 +84,11 @@ async function handleSupWritten(event) {
     }
   }
 
-  // Look up sender username and recipient device token
-  const [senderDoc, recipientDoc] = await Promise.all([
-    db.collection("profiles").doc(fromUid).get(),
-    db.collection("users").doc(toUid).get(),
-  ]);
+  // Get sender username from friendship doc, recipient device token from users
+  const friendshipData = friendshipDoc.data();
+  const senderName = friendshipData?.usernames?.[fromUid] || "someone";
 
-  const senderName = senderDoc.data()?.username || "someone";
+  const recipientDoc = await db.collection("users").doc(toUid).get();
   const deviceToken = recipientDoc.data()?.deviceToken;
 
   if (!deviceToken) return;
@@ -91,17 +121,16 @@ async function handleFriendRequestCreated(event) {
   const data = event.data?.data();
   if (!data || data.status !== "pending") return;
 
-  const { requestedBy, users } = data;
+  const { requestedBy, users, usernames } = data;
   const recipientUid = users.find((uid) => uid !== requestedBy);
   if (!recipientUid) return;
 
   const db = getDb();
-  const [senderDoc, recipientDoc] = await Promise.all([
-    db.collection("profiles").doc(requestedBy).get(),
-    db.collection("users").doc(recipientUid).get(),
-  ]);
 
-  const senderName = senderDoc.data()?.username || "someone";
+  // Sender username is denormalized in the friendship doc
+  const senderName = usernames?.[requestedBy] || "someone";
+
+  const recipientDoc = await db.collection("users").doc(recipientUid).get();
   const deviceToken = recipientDoc.data()?.deviceToken;
 
   if (!deviceToken) return;
@@ -126,7 +155,9 @@ async function handleFriendRequestCreated(event) {
   }
 }
 
+exports.handleSearchUsers = handleSearchUsers;
 exports.handleSupWritten = handleSupWritten;
 exports.handleFriendRequestCreated = handleFriendRequestCreated;
+exports.searchUsers = onCall(handleSearchUsers);
 exports.onSupWritten = onDocumentWritten("sups/{docId}", handleSupWritten);
 exports.onFriendRequestCreated = onDocumentCreated("friendships/{docId}", handleFriendRequestCreated);

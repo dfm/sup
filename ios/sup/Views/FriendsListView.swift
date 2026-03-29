@@ -24,8 +24,8 @@ struct FriendsListView: View {
                     List(friendService.friends) { friend in
                         FriendRow(
                             friend: friend,
-                            lastSup: supService.lastSups[friend.id ?? ""],
-                            canSup: supService.canSup(toUid: friend.id ?? ""),
+                            lastSup: supService.lastSups[friend.id],
+                            canSup: supService.canSup(toUid: friend.id),
                             justSent: lastTapped == friend.id
                         )
                         .contentShape(Rectangle())
@@ -86,26 +86,26 @@ struct FriendsListView: View {
         }
     }
 
-    private func sendSup(to friend: Profile) {
-        guard let uid = friend.id, supService.canSup(toUid: uid) else { return }
+    private func sendSup(to friend: Friend) {
+        guard supService.canSup(toUid: friend.id) else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        lastTapped = uid
+        lastTapped = friend.id
 
         Task {
             do {
-                try await supService.sendSup(toUid: uid)
+                try await supService.sendSup(toUid: friend.id)
             } catch {
                 self.error = "couldn't send sup"
             }
             try? await Task.sleep(for: .seconds(1))
-            if lastTapped == uid { lastTapped = nil }
+            if lastTapped == friend.id { lastTapped = nil }
         }
     }
 }
 
 struct FriendRow: View {
-    let friend: Profile
+    let friend: Friend
     let lastSup: SupMessage?
     let canSup: Bool
     let justSent: Bool

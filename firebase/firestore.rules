@@ -9,9 +9,10 @@ service cloud.firestore {
         && request.auth.uid == uid;
     }
 
-    // Public profiles — readable by any auth user, writable by owner only
+    // Profiles — owner only (search is done server-side via Cloud Function)
     match /profiles/{uid} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+        && request.auth.uid == uid;
 
       allow create: if request.auth != null
         && request.auth.uid == uid
@@ -49,7 +50,9 @@ service cloud.firestore {
         && request.resource.data.users[0] != request.resource.data.users[1]
         && request.resource.data.users[0] < request.resource.data.users[1]
         && docId == (request.resource.data.users[0] + '_' + request.resource.data.users[1])
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && request.resource.data.usernames is map
+        && request.resource.data.usernames.size() == 2;
 
       // Only the non-requester can accept; only status can change
       allow update: if request.auth != null

@@ -7,6 +7,12 @@ jest.mock("firebase-functions/v2/firestore", () => ({
   onDocumentWritten: jest.fn((path, handler) => handler),
   onDocumentCreated: jest.fn((path, handler) => handler),
 }));
+jest.mock("firebase-functions/v2/https", () => ({
+  onCall: jest.fn((handler) => handler),
+  HttpsError: class HttpsError extends Error {
+    constructor(code, message) { super(message); this.code = code; }
+  },
+}));
 
 process.env.NODE_ENV = "test";
 const functions = require("../index");
@@ -21,7 +27,6 @@ describe("onFriendRequestCreated", () => {
 
   test("sends push notification for pending friend request", async () => {
     const mockDb = createMockDb({
-      profiles: { alice: { username: "alice" } },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -30,6 +35,7 @@ describe("onFriendRequestCreated", () => {
       status: "pending",
       requestedBy: "alice",
       users: ["alice", "bob"],
+      usernames: { alice: "alice", bob: "bob" },
     });
 
     await functions.handleFriendRequestCreated(event);
@@ -46,6 +52,7 @@ describe("onFriendRequestCreated", () => {
       status: "accepted",
       requestedBy: "alice",
       users: ["alice", "bob"],
+      usernames: { alice: "alice", bob: "bob" },
     });
 
     await functions.handleFriendRequestCreated(event);
@@ -55,7 +62,6 @@ describe("onFriendRequestCreated", () => {
 
   test("does not send notification when recipient has no device token", async () => {
     const mockDb = createMockDb({
-      profiles: { alice: { username: "alice" } },
       users: { bob: {} },
     });
     functions._setDb(mockDb);
@@ -64,6 +70,7 @@ describe("onFriendRequestCreated", () => {
       status: "pending",
       requestedBy: "alice",
       users: ["alice", "bob"],
+      usernames: { alice: "alice", bob: "bob" },
     });
 
     await functions.handleFriendRequestCreated(event);
@@ -79,9 +86,8 @@ describe("onFriendRequestCreated", () => {
     expect(mockMessaging.getSent()).toHaveLength(0);
   });
 
-  test("uses 'someone' when sender has no username", async () => {
+  test("uses 'someone' when usernames field is missing", async () => {
     const mockDb = createMockDb({
-      profiles: { alice: {} },
       users: { bob: { deviceToken: "bob-token" } },
     });
     functions._setDb(mockDb);
@@ -100,7 +106,6 @@ describe("onFriendRequestCreated", () => {
 
   test("correctly identifies recipient when requestedBy is second in array", async () => {
     const mockDb = createMockDb({
-      profiles: { bob: { username: "bob" } },
       users: { alice: { deviceToken: "alice-token" } },
     });
     functions._setDb(mockDb);
@@ -109,6 +114,7 @@ describe("onFriendRequestCreated", () => {
       status: "pending",
       requestedBy: "bob",
       users: ["alice", "bob"],
+      usernames: { alice: "alice", bob: "bob" },
     });
 
     await functions.handleFriendRequestCreated(event);
