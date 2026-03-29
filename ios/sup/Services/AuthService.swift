@@ -92,7 +92,7 @@ final class AuthService {
         do {
             try await batch.commit()
         } catch let error as NSError where error.domain == "FIRFirestoreErrorDomain"
-            && error.code == 7 /* PERMISSION_DENIED */ {
+            && error.code == FirestoreErrorCode.permissionDenied.rawValue {
             throw AuthError.usernameTaken
         }
     }

@@ -21,12 +21,12 @@ service cloud.firestore {
         && request.resource.data.username.size() <= 20
         && request.resource.data.usernameLower == request.resource.data.username.lower();
 
+      // Username is immutable; only non-username fields can be updated
       allow update: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.data.username is string
-        && request.resource.data.username.size() >= 3
-        && request.resource.data.username.size() <= 20
-        && request.resource.data.usernameLower == request.resource.data.username.lower();
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.usernameLower == resource.data.usernameLower
+        && request.resource.data.createdAt == resource.data.createdAt;
     }
 
     // Username reservation — enforces uniqueness atomically
@@ -68,12 +68,20 @@ service cloud.firestore {
         && (request.auth.uid == resource.data.fromUid
             || request.auth.uid == resource.data.toUid);
 
-      allow create, update: if request.auth != null
+      allow create: if request.auth != null
         && request.auth.uid == request.resource.data.fromUid
         && request.resource.data.fromUid is string
         && request.resource.data.toUid is string
         && request.resource.data.timestamp is timestamp
         && docId == (request.resource.data.fromUid + '_' + request.resource.data.toUid);
+
+      // Updates can only change timestamp (for subsequent sups)
+      allow update: if request.auth != null
+        && request.auth.uid == request.resource.data.fromUid
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['timestamp']);
     }
   }
 }
